@@ -1,0 +1,191 @@
+<?php
+session_start();
+require_once 'php/conexion.php';
+
+if(!isset($_SESSION['usuario'])){
+    header("Location: login.php");
+    exit();
+}
+
+$titulo_pagina = "Clientes";
+$subtitulo_pagina = "Gestión de datos de clientes";
+
+if(isset($_POST['crear_cliente'])){
+    $nombre = $_POST['nombre'] ?? '';
+    $apellido = $_POST['apellido'] ?? '';
+    $telefono = $_POST['telefono'] ?? '';
+    $correo = $_POST['correo'] ?? '';
+    $direccion = $_POST['direccion'] ?? '';
+
+    if($nombre){
+        $sql = "INSERT INTO clientes (nombre, apellido, telefono, correo, direccion) VALUES (?, ?, ?, ?, ?)";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("sssss", $nombre, $apellido, $telefono, $correo, $direccion);
+        if($stmt->execute()){
+            $mensaje_exito = "Cliente registrado exitosamente";
+        }
+    }
+}
+
+if(isset($_GET['eliminar'])){
+    $id = $_GET['eliminar'];
+    $sql = "DELETE FROM clientes WHERE id_cliente = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $id);
+    if($stmt->execute()){
+        $mensaje_exito = "Cliente eliminado";
+    }
+}
+
+$buscar = $_GET['buscar'] ?? '';
+$sql = "SELECT * FROM clientes WHERE nombre LIKE ? OR apellido LIKE ? OR telefono LIKE ? OR correo LIKE ? ORDER BY nombre ASC";
+$stmt = $conn->prepare($sql);
+$buscar_param = "%{$buscar}%";
+$stmt->bind_param("ssss", $buscar_param, $buscar_param, $buscar_param, $buscar_param);
+$stmt->execute();
+$resultado = $stmt->get_result();
+$clientes = [];
+while($row = $resultado->fetch_assoc()){
+    $clientes[] = $row;
+}
+?>
+
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clientes - Farmacia El Danny</title>
+    <link rel="stylesheet" href="css/global.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        .modal {display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center;}
+        .modal.active {display: flex;}
+        .modal-content {background: linear-gradient(180deg, rgba(18,18,18,0.95), rgba(10,10,10,0.98)); border: 1px solid rgba(255,255,255,0.05); border-radius: 14px; padding: 35px; max-width: 600px; width: 90%; backdrop-filter: blur(12px); max-height: 90vh; overflow-y: auto;}
+        .modal-header {display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 15px;}
+        .modal-header h2 {font-size: 24px; font-weight: 700; color: white;}
+        .modal-close {background: none; border: none; color: var(--text-muted); font-size: 24px; cursor: pointer; transition: var(--transition);}
+        .modal-close:hover {color: white;}
+        .toolbar {display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; flex-wrap: wrap; gap: 15px;}
+        .btn-small {padding: 8px 12px; font-size: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.02); color: white; border-radius: 8px; cursor: pointer; transition: var(--transition);}
+        .btn-small:hover {background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.2);}
+        .btn-small.danger {color: #ff6b6b; border-color: rgba(255, 107, 107, 0.2);}
+        .btn-small.danger:hover {background: rgba(255, 107, 107, 0.1);}
+        .actions {display: flex; gap: 8px;}
+    </style>
+</head>
+
+<body>
+
+    <?php require_once 'componentes/sidebar.php'; ?>
+
+    <div class="main">
+        <?php require_once 'componentes/topbar.php'; ?>
+
+        <?php if(isset($mensaje_exito)): ?>
+            <div class="alert alert-success"><i class="fa-solid fa-circle-check"></i> <?php echo $mensaje_exito; ?></div>
+        <?php endif; ?>
+
+        <div class="cards">
+            <div class="card">
+                <div class="card-title">Total Clientes</div>
+                <div class="card-value"><?php echo count($clientes); ?></div>
+                <div class="card-small">Clientes registrados</div>
+            </div>
+        </div>
+
+        <div class="toolbar">
+            <form method="GET" style="display: flex; flex: 1; gap: 10px; min-width: 300px;">
+                <input type="text" name="buscar" placeholder="Buscar cliente..." value="<?php echo htmlspecialchars($buscar); ?>" style="flex: 1; padding: 12px 16px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; color: white; font-family: 'Inter', sans-serif;">
+                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-magnifying-glass"></i> Buscar</button>
+            </form>
+            <button class="btn btn-primary" onclick="abrirModal()"><i class="fa-solid fa-plus"></i> Nuevo Cliente</button>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Apellido</th>
+                        <th>Teléfono</th>
+                        <th>Correo</th>
+                        <th>Dirección</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if(count($clientes) > 0): ?>
+                        <?php foreach($clientes as $cliente): ?>
+                            <tr>
+                                <td><?php echo htmlspecialchars($cliente['nombre']); ?></td>
+                                <td><?php echo htmlspecialchars($cliente['apellido'] ?? '-'); ?></td>
+                                <td><?php echo htmlspecialchars($cliente['telefono'] ?? '-'); ?></td>
+                                <td><?php echo htmlspecialchars($cliente['correo'] ?? '-'); ?></td>
+                                <td><?php echo htmlspecialchars($cliente['direccion'] ?? '-'); ?></td>
+                                <td>
+                                    <div class="actions">
+                                        <button class="btn-small"><i class="fa-solid fa-edit"></i></button>
+                                        <a href="?eliminar=<?php echo $cliente['id_cliente']; ?>" class="btn-small danger" onclick="return confirm('¿Eliminar?')"><i class="fa-solid fa-trash"></i></a>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 30px; color: var(--text-muted);">No hay clientes registrados</td>
+                        </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="modal" id="modalCliente">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Nuevo Cliente</h2>
+                <button class="modal-close" onclick="cerrarModal()">&times;</button>
+            </div>
+
+            <form method="POST">
+                <div class="form-group">
+                    <label class="form-label">Nombre</label>
+                    <input type="text" name="nombre" class="form-control" placeholder="Nombre del cliente" required>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Apellido</label>
+                    <input type="text" name="apellido" class="form-control" placeholder="Apellido">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Teléfono</label>
+                    <input type="text" name="telefono" class="form-control" placeholder="Teléfono de contacto">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Correo</label>
+                    <input type="email" name="correo" class="form-control" placeholder="correo@ejemplo.com">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Dirección</label>
+                    <textarea name="direccion" class="form-control" rows="3" placeholder="Dirección de entrega"></textarea>
+                </div>
+
+                <button type="submit" name="crear_cliente" class="btn btn-primary" style="width: 100%; margin-top: 20px;"><i class="fa-solid fa-plus"></i> Registrar Cliente</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function abrirModal(){document.getElementById('modalCliente').classList.add('active');}
+        function cerrarModal(){document.getElementById('modalCliente').classList.remove('active');}
+        window.onclick = function(event){let modal = document.getElementById('modalCliente'); if(event.target === modal){modal.classList.remove('active');}}
+    </script>
+
+</body>
+
+</html>
