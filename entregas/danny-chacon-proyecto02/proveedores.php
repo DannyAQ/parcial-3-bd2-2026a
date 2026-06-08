@@ -26,15 +26,27 @@ if(isset($_POST['crear_proveedor'])){
             $mensaje_exito = "Proveedor registrado exitosamente";
         }
     }
-}
+if(isset($_GET['desactivar'])){
+    $id = $_GET['desactivar'];
 
-if(isset($_GET['eliminar'])){
-    $id = $_GET['eliminar'];
-    $sql = "DELETE FROM proveedores WHERE id_proveedor = ?";
+    $sql = "UPDATE proveedores SET activo = 0 WHERE id_proveedor = ?";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("i", $id);
+
     if($stmt->execute()){
-        $mensaje_exito = "Proveedor eliminado";
+        $mensaje_exito = "Proveedor desactivado";
+    }
+}
+
+if(isset($_GET['activar'])){
+    $id = $_GET['activar'];
+
+    $sql = "UPDATE proveedores SET activo = 1 WHERE id_proveedor = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $id);
+
+    if($stmt->execute()){
+        $mensaje_exito = "Proveedor activado";
     }
 }
 
