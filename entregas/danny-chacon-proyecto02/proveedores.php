@@ -26,6 +26,7 @@ if(isset($_POST['crear_proveedor'])){
             $mensaje_exito = "Proveedor registrado exitosamente";
         }
     }
+}
 if(isset($_GET['desactivar'])){
     $id = $_GET['desactivar'];
 
@@ -48,16 +49,29 @@ if(isset($_GET['activar'])){
     if($stmt->execute()){
         $mensaje_exito = "Proveedor activado";
     }
-}
 
+}    
 $buscar = $_GET['buscar'] ?? '';
-$sql = "SELECT * FROM proveedores WHERE nombre_empresa LIKE ? OR nit LIKE ? OR correo LIKE ? ORDER BY nombre_empresa ASC";
+
+$sql = "SELECT * FROM proveedores
+        WHERE activo = 1
+        AND (
+            nombre_empresa LIKE ?
+            OR nit LIKE ?
+            OR correo LIKE ?
+        )
+        ORDER BY nombre_empresa ASC";
+
 $stmt = $conn->prepare($sql);
+
 $buscar_param = "%{$buscar}%";
 $stmt->bind_param("sss", $buscar_param, $buscar_param, $buscar_param);
+
 $stmt->execute();
 $resultado = $stmt->get_result();
+
 $proveedores = [];
+
 while($row = $resultado->fetch_assoc()){
     $proveedores[] = $row;
 }
@@ -138,11 +152,25 @@ while($row = $resultado->fetch_assoc()){
                                 <td><?php echo htmlspecialchars($prov['correo'] ?? '-'); ?></td>
                                 <td><?php echo htmlspecialchars($prov['contacto'] ?? '-'); ?></td>
                                 <td>
-                                    <div class="actions">
-                                        <button class="btn-small"><i class="fa-solid fa-edit"></i></button>
-                                        <a href="?eliminar=<?php echo $prov['id_proveedor']; ?>" class="btn-small danger" onclick="return confirm('¿Eliminar?')"><i class="fa-solid fa-trash"></i></a>
-                                    </div>
-                                </td>
+                                        <div class="actions">
+                                            <button class="btn-small">
+                                                <i class="fa-solid fa-edit"></i>
+                                            </button>
+
+                                            <?php if($prov['activo'] == 1): ?>
+                                                <a href="?desactivar=<?php echo $prov['id_proveedor']; ?>"
+                                                class="btn-small danger"
+                                                onclick="return confirm('¿Desactivar proveedor?')">
+                                                    <i class="fa-solid fa-ban"></i>
+                                                </a>
+                                            <?php else: ?>
+                                                <a href="?activar=<?php echo $prov['id_proveedor']; ?>"
+                                                class="btn-small">
+                                                    <i class="fa-solid fa-check"></i>
+                                                </a>
+                                            <?php endif; ?>
+                                        </div>
+                                    </td>
                             </tr>
                         <?php endforeach; ?>
                     <?php else: ?>

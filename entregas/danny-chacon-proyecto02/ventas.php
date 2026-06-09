@@ -58,17 +58,23 @@ if(isset($_POST['crear_venta'])){
                         continue;
                     }
 
-        $sql_producto = "
-        SELECT p.precio_venta,
-               l.id_lote,
-               l.cantidad_disponible
-        FROM productos p
-        INNER JOIN lotes l
-        ON p.id_producto=l.id_producto
-        WHERE p.id_producto=?
-        AND l.estado='ACTIVO'
-        LIMIT 1
-        ";
+                    $sql_producto = "
+            SELECT
+                p.precio_venta,
+                l.id_lote,
+                l.cantidad_disponible
+            FROM productos p
+            INNER JOIN lotes l
+            ON p.id_producto = l.id_producto
+            WHERE
+                p.id_producto = ?
+                AND l.estado='ACTIVO'
+                AND l.cantidad_disponible > 0
+            ORDER BY
+                l.fecha_ingreso ASC,
+                l.id_lote ASC
+            LIMIT 1
+            ";
 
         $stmt_prod =
         $conn->prepare($sql_producto);
