@@ -7,6 +7,65 @@ if (!isset($_SESSION['usuario'])) {
     exit();
 }
 
+if(isset($_GET['eliminar'])){
+    $id = (int)$_GET['eliminar'];
+    $sql_del = "UPDATE productos SET estado = 'descontinuado' WHERE id_producto = ?";
+    $stmt_del = $conn->prepare($sql_del);
+    $stmt_del->bind_param("i", $id);
+    if($stmt_del->execute()){
+        $mensaje_exito = "Medicamento eliminado";
+    }
+    $stmt_del->close();
+}
+
+if(isset($_POST['actualizar_producto'])){
+    $id_producto = (int)$_POST['id_producto'];
+    $nombre = trim($_POST['nombre']);
+    $principio_activo = trim($_POST['principio_activo']);
+    $presentacion = trim($_POST['presentacion']);
+    $descripcion = trim($_POST['descripcion']);
+    $precio_venta = (float)$_POST['precio_venta'];
+    $stock_minimo = (int)$_POST['stock_minimo'];
+    $tipo_venta = $_POST['tipo_venta'];
+
+    $categoria_nueva = trim($_POST['categoria_nueva'] ?? '');
+    $id_categoria = (int)($_POST['id_categoria'] ?? 0);
+
+    if(!empty($categoria_nueva)){
+        $sql_cat = "SELECT id_categoria FROM categorias WHERE nombre = ?";
+        $stmt_cat = $conn->prepare($sql_cat);
+        $stmt_cat->bind_param("s", $categoria_nueva);
+        $stmt_cat->execute();
+        $res_cat = $stmt_cat->get_result();
+        if($fila = $res_cat->fetch_assoc()){
+            $id_categoria = $fila['id_categoria'];
+        } else {
+            $sql_insert_cat = "INSERT INTO categorias(nombre) VALUES(?)";
+            $stmt_insert_cat = $conn->prepare($sql_insert_cat);
+            $stmt_insert_cat->bind_param("s", $categoria_nueva);
+            if($stmt_insert_cat->execute()){
+                $id_categoria = $conn->insert_id;
+            }
+            $stmt_insert_cat->close();
+        }
+        $stmt_cat->close();
+    }
+
+    if($id_categoria > 0){
+        $sql = "UPDATE productos SET nombre = ?, principio_activo = ?, presentacion = ?, descripcion = ?, precio_venta = ?, stock_minimo = ?, id_categoria = ?, tipo_venta = ? WHERE id_producto = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("ssssdiisi", $nombre, $principio_activo, $presentacion, $descripcion, $precio_venta, $stock_minimo, $id_categoria, $tipo_venta, $id_producto);
+        if($stmt->execute()){
+            $mensaje_exito = "Medicamento actualizado correctamente";
+        } else {
+            $mensaje_error = "Error al actualizar el medicamento";
+        }
+        $stmt->close();
+    } else {
+        $mensaje_error = "Debe seleccionar o crear una categoría";
+    }
+}
+
 if(isset($_POST['crear_producto'])){
 
     $nombre = trim($_POST['nombre']);
@@ -96,6 +155,17 @@ $subtitulo_pagina = "Listado y visualización de medicamentos";
 $buscar = $_GET['buscar'] ?? '';
 $id_categoria = $_GET['id_categoria'] ?? '';
 
+$producto_editar = NULL;
+if(isset($_GET['editar'])){
+    $id_edit = (int)$_GET['editar'];
+    $sql_edit = "SELECT * FROM productos WHERE id_producto = ? AND estado <> 'descontinuado'";
+    $stmt_edit = $conn->prepare($sql_edit);
+    $stmt_edit->bind_param("i", $id_edit);
+    $stmt_edit->execute();
+    $producto_editar = $stmt_edit->get_result()->fetch_assoc();
+    $stmt_edit->close();
+}
+
 $sql = "SELECT
             p.*,
             c.nombre AS categoria_nombre,
@@ -106,7 +176,7 @@ $sql = "SELECT
         LEFT JOIN lotes l
             ON p.id_producto = l.id_producto
             AND l.estado <> 'ELIMINADO'
-        WHERE 1=1";
+        WHERE p.estado <> 'descontinuado'";
 
 $params = [];
 $tipos = "";
@@ -352,9 +422,9 @@ if ($resultado = $conn->query($sql_cat)) {
                                 <td><?php echo htmlspecialchars($med['categoria_nombre'] ?? '-'); ?></td>
                                 <td>
                                     <div class="actions">
-                                        <button class="btn-small" onclick="alert('Editar próximamente')">
+                                        <a href="?editar=<?php echo $med['id_producto']; ?>" class="btn-small">
                                             <i class="fa-solid fa-edit"></i>
-                                        </button>
+                                        </a>
                                         <a href="?eliminar=<?php echo $med['id_producto']; ?>" class="btn-small danger" onclick="return confirm('¿Eliminar este medicamento?')">
                                             <i class="fa-solid fa-trash"></i>
                                         </a>
@@ -377,24 +447,27 @@ if ($resultado = $conn->query($sql_cat)) {
     <div class="modal" id="modalProducto">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Nuevo Medicamento</h2>
+                <h2><?php echo isset($producto_editar) ? 'Editar Medicamento' : 'Nuevo Medicamento'; ?></h2>
                 <button class="modal-close" onclick="cerrarModal()">&times;</button>
             </div>
 
             <form method="POST">
+                <?php if(isset($producto_editar)): ?>
+                    <input type="hidden" name="id_producto" value="<?php echo $producto_editar['id_producto']; ?>">
+                <?php endif; ?>
                 <div class="form-group">
                     <label class="form-label">Nombre del Medicamento</label>
-                    <input type="text" name="nombre" class="form-control" placeholder="Ej: Ibuprofeno" required>
+                    <input type="text" name="nombre" class="form-control" placeholder="Ej: Ibuprofeno" value="<?php echo isset($producto_editar) ? htmlspecialchars($producto_editar['nombre']) : ''; ?>" required>
                 </div>
 
                 <div class="form-group">
                     <label class="form-label">Principio Activo</label>
-                    <input type="text" name="principio_activo" class="form-control" placeholder="Ej: Ibuprofen 400mg">
+                    <input type="text" name="principio_activo" class="form-control" placeholder="Ej: Ibuprofen 400mg" value="<?php echo isset($producto_editar) ? htmlspecialchars($producto_editar['principio_activo'] ?? '') : ''; ?>">
                 </div>
 
                 <div class="form-group">
                     <label class="form-label">Presentación</label>
-                    <input type="text" name="presentacion" class="form-control" placeholder="Ej: Tabletas x 20">
+                    <input type="text" name="presentacion" class="form-control" placeholder="Ej: Tabletas x 20" value="<?php echo isset($producto_editar) ? htmlspecialchars($producto_editar['presentacion'] ?? '') : ''; ?>">
                 </div>
 
                 <div class="form-group">
@@ -402,7 +475,7 @@ if ($resultado = $conn->query($sql_cat)) {
                     <select name="id_categoria" class="form-control" >
                         <option value="">Seleccionar categoría</option>
                         <?php foreach($categorias as $cat): ?>
-                            <option value="<?php echo $cat['id_categoria']; ?>">
+                            <option value="<?php echo $cat['id_categoria']; ?>" <?php echo (isset($producto_editar) && $producto_editar['id_categoria'] == $cat['id_categoria']) ? 'selected' : ''; ?>>
                                 <?php echo htmlspecialchars($cat['nombre']); ?>
                             </option>
                         <?php endforeach; ?>
@@ -422,30 +495,36 @@ if ($resultado = $conn->query($sql_cat)) {
                 <label class="form-label">Tipo de Venta</label>
 
                 <select name="tipo_venta" class="form-control" required>
-                    <option value="VENTA_LIBRE">Venta Libre</option>
-                    <option value="FORMULA_MEDICA">Fórmula Médica</option>
+                    <option value="VENTA_LIBRE" <?php echo (isset($producto_editar) && $producto_editar['tipo_venta'] === 'VENTA_LIBRE') ? 'selected' : ''; ?>>Venta Libre</option>
+                    <option value="FORMULA_MEDICA" <?php echo (isset($producto_editar) && $producto_editar['tipo_venta'] === 'FORMULA_MEDICA') ? 'selected' : ''; ?>>Fórmula Médica</option>
                 </select>
             </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                     <div class="form-group">
                         <label class="form-label">Precio Venta</label>
-                        <input type="number" name="precio_venta" class="form-control" placeholder="0.00" step="0.01" required>
+                        <input type="number" name="precio_venta" class="form-control" placeholder="0.00" step="0.01" value="<?php echo isset($producto_editar) ? $producto_editar['precio_venta'] : ''; ?>" required>
                     </div>
                     
                     <div class="form-group">
                         <label class="form-label">Stock Mínimo</label>
-                        <input type="number" name="stock_minimo" class="form-control" value="5" required>
+                        <input type="number" name="stock_minimo" class="form-control" value="<?php echo isset($producto_editar) ? $producto_editar['stock_minimo'] : '5'; ?>" required>
                     </div>
                 </div>
 
                 <div class="form-group">
                     <label class="form-label">Descripción</label>
-                    <textarea name="descripcion" class="form-control" rows="3" placeholder="Descripción del medicamento"></textarea>
+                    <textarea name="descripcion" class="form-control" rows="3" placeholder="Descripción del medicamento"><?php echo isset($producto_editar) ? htmlspecialchars($producto_editar['descripcion'] ?? '') : ''; ?></textarea>
                 </div>
 
-                <button type="submit" name="crear_producto" class="btn btn-primary" style="width: 100%; margin-top: 20px;">
-                    <i class="fa-solid fa-plus"></i> Crear Medicamento
-                </button>
+                <?php if(isset($producto_editar)): ?>
+                    <button type="submit" name="actualizar_producto" class="btn btn-primary" style="width: 100%; margin-top: 20px;">
+                        <i class="fa-solid fa-save"></i> Actualizar Medicamento
+                    </button>
+                <?php else: ?>
+                    <button type="submit" name="crear_producto" class="btn btn-primary" style="width: 100%; margin-top: 20px;">
+                        <i class="fa-solid fa-plus"></i> Crear Medicamento
+                    </button>
+                <?php endif; ?>
             </form>
         </div>
     </div>
@@ -465,6 +544,12 @@ if ($resultado = $conn->query($sql_cat)) {
                 modal.classList.remove('active');
             }
         }
+
+        document.addEventListener('DOMContentLoaded', function(){
+            <?php if(isset($_GET['editar'])): ?>
+                abrirModal();
+            <?php endif; ?>
+        });
     </script>
 
 </body>

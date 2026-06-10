@@ -38,6 +38,39 @@ if(isset($_GET['eliminar'])){
 }
 
 $buscar = $_GET['buscar'] ?? '';
+
+// Cargar historial de ventas si se visualiza un cliente
+$cliente_detalle = NULL;
+$ventas_cliente = [];
+if(isset($_GET['ver'])){
+    $id_cli = (int)$_GET['ver'];
+    $sql_det = "SELECT * FROM clientes WHERE id_cliente = ?";
+    $stmt_det = $conn->prepare($sql_det);
+    $stmt_det->bind_param("i", $id_cli);
+    $stmt_det->execute();
+    $cliente_detalle = $stmt_det->get_result()->fetch_assoc();
+    
+    if($cliente_detalle){
+        $sql_vent = "
+            SELECT v.id_venta, v.fecha_venta, v.metodo_pago, v.total_venta, 
+                   f.id_factura, f.numero_factura
+            FROM ventas v
+            LEFT JOIN facturas_venta f ON v.id_venta = f.id_venta
+            WHERE v.id_cliente = ?
+            ORDER BY v.fecha_venta DESC
+        ";
+        $stmt_vent = $conn->prepare($sql_vent);
+        $stmt_vent->bind_param("i", $id_cli);
+        $stmt_vent->execute();
+        $resultado_ventas = $stmt_vent->get_result();
+
+            while($row = $resultado_ventas->fetch_assoc()){
+                $ventas_cliente[] = $row;
+            }
+            
+        }
+    }
+// }
 $sql = "SELECT * FROM clientes WHERE nombre LIKE ? OR apellido LIKE ? OR telefono LIKE ? OR correo LIKE ? ORDER BY nombre ASC";
 $stmt = $conn->prepare($sql);
 $buscar_param = "%{$buscar}%";
@@ -126,6 +159,7 @@ while($row = $resultado->fetch_assoc()){
                                 <td><?php echo htmlspecialchars($cliente['direccion'] ?? '-'); ?></td>
                                 <td>
                                     <div class="actions">
+                                        <a href="?ver=<?php echo $cliente['id_cliente']; ?>" class="btn-small" title="Ver historial de ventas"><i class="fa-solid fa-history"></i> Historial</a>
                                         <button class="btn-small"><i class="fa-solid fa-edit"></i></button>
                                         <a href="?eliminar=<?php echo $cliente['id_cliente']; ?>" class="btn-small danger" onclick="return confirm('¿Eliminar?')"><i class="fa-solid fa-trash"></i></a>
                                     </div>
@@ -140,7 +174,92 @@ while($row = $resultado->fetch_assoc()){
                 </tbody>
             </table>
         </div>
-    </div>
+
+        <?php if($cliente_detalle): ?>
+        <div style="margin-top: 30px; padding: 25px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="color: white; margin: 0;">
+                    <i class="fa-solid fa-user"></i> 
+                    <?php echo htmlspecialchars($cliente_detalle['nombre']); ?>
+                    <?php if($cliente_detalle['apellido']): ?>
+                        <?php echo htmlspecialchars($cliente_detalle['apellido']); ?>
+                    <?php endif; ?>
+                </h2>
+                <a href="clientes.php" class="btn btn-dark" style="border: 1px solid rgba(255,255,255,0.1);">
+                    <i class="fa-solid fa-arrow-left"></i> Volver
+                </a>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 25px;">
+                <div style="background: rgba(255,255,255,0.02); padding: 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+                    <small style="color: var(--text-muted);">Teléfono</small>
+                    <div style="color: white; font-weight: 600; margin-top: 5px;">
+                        <?php echo htmlspecialchars($cliente_detalle['telefono'] ?? '-'); ?>
+                    </div>
+                </div>
+                <div style="background: rgba(255,255,255,0.02); padding: 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+                    <small style="color: var(--text-muted);">Correo</small>
+                    <div style="color: white; font-weight: 600; margin-top: 5px;">
+                        <?php echo htmlspecialchars($cliente_detalle['correo'] ?? '-'); ?>
+                    </div>
+                </div>
+                <div style="background: rgba(255,255,255,0.02); padding: 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+                    <small style="color: var(--text-muted);">Total Compras</small>
+                    <div style="color: #51cf66; font-weight: 600; margin-top: 5px;">
+                        <?php echo count($ventas_cliente); ?>
+                    </div>
+                </div>
+            </div>
+
+            <h3 style="color: white; margin-bottom: 15px;">
+                <i class="fa-solid fa-receipt"></i> Historial de Ventas/Facturas
+            </h3>
+
+            <?php if(count($ventas_cliente) > 0): ?>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Número Factura</th>
+                            <th>Fecha</th>
+                            <th>Método Pago</th>
+                            <th>Total</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach($ventas_cliente as $venta): ?>
+                        <tr>
+                            <td>
+                                <?php if($venta['numero_factura']): ?>
+                                    <?php echo htmlspecialchars($venta['numero_factura']); ?>
+                                <?php else: ?>
+                                    <span style="color: var(--text-muted);">Sin factura</span>
+                                <?php endif; ?>
+                            </td>
+                            <td><?php echo date('d/m/Y H:i', strtotime($venta['fecha_venta'])); ?></td>
+                            <td><?php echo htmlspecialchars($venta['metodo_pago']); ?></td>
+                            <td>$<?php echo number_format($venta['total_venta'], 2); ?></td>
+                            <td>
+                                <?php if($venta['id_factura']): ?>
+                                <button class="btn-small" onclick="imprimirFactura(<?php echo $venta['id_factura']; ?>)">
+                                    <i class="fa-solid fa-print"></i> Imprimir
+                                </button>
+                                <?php else: ?>
+                                <span style="color: var(--text-muted); font-size: 12px;">-</span>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php else: ?>
+            <p style="color: var(--text-muted); text-align: center; padding: 20px;">Este cliente no tiene ventas registradas.</p>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+        
 
     <div class="modal" id="modalCliente">
         <div class="modal-content">
@@ -184,6 +303,13 @@ while($row = $resultado->fetch_assoc()){
         function abrirModal(){document.getElementById('modalCliente').classList.add('active');}
         function cerrarModal(){document.getElementById('modalCliente').classList.remove('active');}
         window.onclick = function(event){let modal = document.getElementById('modalCliente'); if(event.target === modal){modal.classList.remove('active');}}
+        
+        function imprimirFactura(id){
+            let ventana = window.open('php/generarpdf.php?id=' + id, '_blank');
+            setTimeout(() => {
+                ventana.print();
+            }, 500);
+        }
     </script>
 
 </body>

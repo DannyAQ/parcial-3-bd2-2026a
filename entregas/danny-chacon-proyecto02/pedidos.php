@@ -164,6 +164,7 @@ $proveedores = [];
 $sql_prov = "
     SELECT *
     FROM proveedores
+    WHERE activo = 1
     ORDER BY nombre_empresa ASC
 ";
 
@@ -190,9 +191,9 @@ $sql_med = "
     FROM productos p
     LEFT JOIN categorias c
         ON p.id_categoria = c.id_categoria
+    WHERE p.estado = 'Activo'
     ORDER BY p.nombre ASC
 ";
-
 if ($resultado = $conn->query($sql_med)) {
 
     while ($row = $resultado->fetch_assoc()) {

@@ -11,10 +11,12 @@ $titulo_pagina = "Ventas";
 $subtitulo_pagina = "Registro de ventas y facturación";
 
 if(isset($_POST['crear_venta'])){
-    $id_cliente = $_POST['id_cliente'] ?? NULL;
     $metodo_pago = $_POST['metodo_pago'] ?? '';
-    $nombre_cliente = $_POST['nombre_cliente'] ?? 'Consumidor';
+    $tipo_cliente = $_POST['tipo_cliente'] ?? 'existente';
+    $id_cliente = NULL;
+    $nombre_cliente = 'Consumidor';
     
+    // Obtener ID del trabajador actual
     $id_trabajador = 0;
     $sql_trab = "SELECT id_cedula FROM trabajadores WHERE usuario = ?";
     $stmt_trab = $conn->prepare($sql_trab);
@@ -23,6 +25,40 @@ if(isset($_POST['crear_venta'])){
     $resultado_trab = $stmt_trab->get_result();
     if($row_trab = $resultado_trab->fetch_assoc()){
         $id_trabajador = $row_trab['id_cedula'];
+    }
+
+    // Procesar cliente existente o crear uno nuevo
+    if($tipo_cliente === 'existente' && isset($_POST['id_cliente_existente'])){
+        $id_cliente = (int)$_POST['id_cliente_existente'];
+        // Obtener nombre del cliente existente
+        $sql_cli = "SELECT nombre FROM clientes WHERE id_cliente = ?";
+        $stmt_cli = $conn->prepare($sql_cli);
+        $stmt_cli->bind_param("i", $id_cliente);
+        $stmt_cli->execute();
+        $res_cli = $stmt_cli->get_result();
+        if($row_cli = $res_cli->fetch_assoc()){
+            $nombre_cliente = $row_cli['nombre'];
+        }
+    } elseif($tipo_cliente === 'manual'){
+        // Crear cliente manual
+        $nombre_manual = $_POST['nombre_cliente'] ?? '';
+        $documento = $_POST['documento_cliente'] ?? '';
+        $telefono = $_POST['telefono_cliente'] ?? '';
+        $direccion = $_POST['direccion_cliente'] ?? '';
+        
+        if(!empty($nombre_manual)){
+            $sql_insert_cli = "INSERT INTO clientes (nombre, telefono, direccion) VALUES (?, ?, ?)";
+            $stmt_insert_cli = $conn->prepare($sql_insert_cli);
+            $stmt_insert_cli->bind_param("sss", $nombre_manual, $telefono, $direccion);
+            if($stmt_insert_cli->execute()){
+                $id_cliente = $conn->insert_id;
+                $nombre_cliente = $nombre_manual;
+            }
+            $stmt_insert_cli->close();
+        } else {
+            $id_cliente = NULL;
+            $nombre_cliente = 'Consumidor';
+        }
     }
 
     if($metodo_pago && $id_trabajador){
@@ -58,145 +94,148 @@ if(isset($_POST['crear_venta'])){
                         continue;
                     }
 
-                    $sql_producto = "
-            SELECT
-                p.precio_venta,
-                l.id_lote,
-                l.cantidad_disponible
-            FROM productos p
-            INNER JOIN lotes l
-            ON p.id_producto = l.id_producto
-            WHERE
-                p.id_producto = ?
-                AND l.estado='ACTIVO'
-                AND l.cantidad_disponible > 0
-            ORDER BY
-                l.fecha_ingreso ASC,
-                l.id_lote ASC
-            LIMIT 1
-            ";
+                            $sql_producto = "
+                SELECT
+                    p.precio_venta,
+                    l.id_lote,
+                    l.cantidad_disponible
+                FROM productos p
+                INNER JOIN lotes l
+                ON p.id_producto = l.id_producto
+                WHERE
+                    p.id_producto = ?
+                    AND l.estado='ACTIVO'
+                    AND l.cantidad_disponible > 0
+                ORDER BY
+                    l.fecha_ingreso ASC,
+                    l.id_lote ASC
+                LIMIT 1
+                ";
 
-        $stmt_prod =
-        $conn->prepare($sql_producto);
+                $stmt_prod = $conn->prepare($sql_producto);
+                $stmt_prod->bind_param("i", $id_producto);
+                $stmt_prod->execute();
 
-        $stmt_prod->bind_param(
-            "i",
-            $id_producto
-        );
+                $prod = $stmt_prod->get_result()->fetch_assoc();
 
-        $stmt_prod->execute();
-
-        $prod =
-        $stmt_prod->get_result()
-                  ->fetch_assoc();
-
-        if(!$prod){
-            continue;
-        }
-        if($cantidad > $prod['cantidad_disponible']){
-
-    die(
-        "Error: El producto "
-        . $id_producto .
-        " no tiene suficiente stock."
-    );
-}
-        $precio =
-        $prod['precio_venta'];
-
-        $subtotal_linea =
-        $precio * $cantidad;
-
-        $subtotal +=
-        $subtotal_linea;
-
-        $total_venta +=
-        $subtotal_linea;
-
-        $sql_detalle = "
-        INSERT INTO detalle_ventas
-        (
-            id_venta,
-            id_producto,
-            id_lote,
-            cantidad,
-            precio_unitario,
-            subtotal
-        )
-        VALUES
-        (?,?,?,?,?,?)
-        ";
-
-        $stmt_det =
-        $conn->prepare($sql_detalle);
-
-        $stmt_det->bind_param(
-            "iiiidd",
-            $id_venta,
-            $id_producto,
-            $prod['id_lote'],
-            $cantidad,
-            $precio,
-            $subtotal_linea
-        );
-
-        $stmt_det->execute();
-
-        $nuevo_stock =
-        $prod['cantidad_disponible']
-        - $cantidad;
-
-        $sql_stock = "
-        UPDATE lotes
-        SET cantidad_disponible=?
-        WHERE id_lote=?
-        ";
-
-        $stmt_stock =
-        $conn->prepare($sql_stock);
-
-        $stmt_stock->bind_param(
-            "ii",
-            $nuevo_stock,
-            $prod['id_lote']
-        );
-
-        $stmt_stock->execute();
+                if(!$prod){
+                    continue;
                 }
-            }
+
+                if($cantidad > $prod['cantidad_disponible']){
+                    $mensaje_error = "El producto " . $id_producto . " no tiene suficiente stock.";
+                    break;
+                }
+
+                $precio = $prod['precio_venta'];
+                $subtotal_linea = $precio * $cantidad;
+
+                $subtotal += $subtotal_linea;
+                $total_venta += $subtotal_linea;
+
+                $sql_detalle = "
+                INSERT INTO detalle_ventas
+                (id_venta,id_producto,id_lote,cantidad,precio_unitario,subtotal)
+                VALUES (?,?,?,?,?,?)
+                ";
+
+                $stmt_det = $conn->prepare($sql_detalle);
+
+                $stmt_det->bind_param(
+                    "iiiidd",
+                    $id_venta,
+                    $id_producto,
+                    $prod['id_lote'],
+                    $cantidad,
+                    $precio,
+                    $subtotal_linea
+                );
+
+                $stmt_det->execute();
+
+                $nuevo_stock = $prod['cantidad_disponible'] - $cantidad;
+
+                $sql_stock = "
+                UPDATE lotes
+                SET cantidad_disponible=?
+                WHERE id_lote=?
+                ";
+
+                $stmt_stock = $conn->prepare($sql_stock);
+
+                $stmt_stock->bind_param(
+                    "ii",
+                    $nuevo_stock,
+                    $prod['id_lote']
+                );
+
+                $stmt_stock->execute();
+
+                } // fin if(strpos($key,'cantidad_')===0)
+
+            } // fin foreach($_POST)
 
             $iva = $subtotal * 0.19;
-            $total_venta = $subtotal + $iva;
+            $total_venta = $subtotal;
 
             $sql_total = "
-            UPDATE ventas
-            SET total_venta=?
-            WHERE id_venta=?
+                UPDATE ventas
+                SET total_venta = ?
+                WHERE id_venta = ?
             ";
 
-            $stmt_total =
-            $conn->prepare($sql_total);
-
+            $stmt_total = $conn->prepare($sql_total);
             $stmt_total->bind_param(
                 "di",
                 $total_venta,
                 $id_venta
             );
-
             $stmt_total->execute();
-            
-            // Crear factura automáticamente
-            $numero_factura = 'FAC-' . str_pad($id_venta, 6, '0', STR_PAD_LEFT);
-            $sql_factura = "INSERT INTO facturas_venta (numero_factura, id_venta, nombre_cliente, subtotal, iva, total_final) VALUES (?, ?, ?, ?, ?, ?)";
-            $stmt_factura = $conn->prepare($sql_factura);
-            $stmt_factura->bind_param("sisddd", $numero_factura, $id_venta, $nombre_cliente, $subtotal, $iva, $total_venta);
-            $stmt_factura->execute();
-            
-            $mensaje_exito = "Venta registrada. Factura: " . $numero_factura;
-            }
-        }
-    }
-}
+
+            $numero_factura = 'FAC-' . str_pad(
+                $id_venta,
+                6,
+                '0',
+                STR_PAD_LEFT
+            );
+
+            $sql_factura = "
+                INSERT INTO facturas_venta
+                (
+                    numero_factura,
+                    id_venta,
+                    nombre_cliente,
+                    subtotal,
+                    iva,
+                    total_final
+                )
+                VALUES
+                (?,?,?,?,?,?)
+            ";
+
+                    $stmt_factura = $conn->prepare($sql_factura);
+                    $stmt_factura->bind_param(
+                        "sisddd",
+                        $numero_factura,
+                        $id_venta,
+                        $nombre_cliente,
+                        $subtotal,
+                        $iva,
+                        $total_venta
+                    );
+                    $stmt_factura->execute();
+
+                    $mensaje_exito = "Venta registrada. Factura: " . $numero_factura;
+
+                } // fin if($stmt->execute())
+
+            } // fin else
+
+        } // fin if($metodo_pago && $id_trabajador)
+
+        } // fin if(isset($_POST['crear_venta']))
+
+           
 
 $clientes = [];
 $sql_cli = "SELECT * FROM clientes ORDER BY nombre ASC";
@@ -222,13 +261,13 @@ SELECT
     p.id_producto,
     p.nombre,
     p.precio_venta,
-    l.id_lote,
-    l.cantidad_disponible
+    SUM(l.cantidad_disponible) AS cantidad_disponible
 FROM productos p
 INNER JOIN lotes l
 ON p.id_producto = l.id_producto
 WHERE l.estado='ACTIVO'
 AND l.cantidad_disponible > 0
+GROUP BY p.id_producto, p.nombre, p.precio_venta
 ORDER BY p.nombre
 ";
 
@@ -238,7 +277,6 @@ while($row = $resultado_prod->fetch_assoc()){
     $productos[] = $row;
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="es">
 
@@ -434,33 +472,69 @@ while($row = $resultado_prod->fetch_assoc()){
     color:#ff6b6b;">
 </div>
 <hr style="margin:20px 0">
-    <div class="form-group">
-        <label class="form-label">Nombre Cliente</label>
-        <input type="text"
-               name="nombre_cliente"
-               class="form-control"
-               required>
+    
+    <h3>Cliente</h3>
+    
+    <div style="display: flex; gap: 20px; margin: 15px 0; align-items: center;">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="radio" name="tipo_cliente" value="existente" checked onchange="toggleClienteForm()">
+            <span>Cliente Existente</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="radio" name="tipo_cliente" value="manual" onchange="toggleClienteForm()">
+            <span>Ingresar Datos Manuales</span>
+        </label>
     </div>
 
-    <div class="form-group">
-        <label class="form-label">Documento</label>
-        <input type="text"
-               name="documento_cliente"
-               class="form-control">
+    <!-- CLIENTE EXISTENTE -->
+    <div id="seccion-cliente-existente">
+        <div class="form-group">
+            <label class="form-label">Seleccionar Cliente</label>
+            <select name="id_cliente_existente" id="id_cliente_existente" class="form-control">
+                <option value="">-- Consumidor (sin registrar) --</option>
+                <?php foreach($clientes as $cli): ?>
+                    <option value="<?php echo $cli['id_cliente']; ?>">
+                        <?php echo htmlspecialchars($cli['nombre']); ?> 
+                        (<?php echo htmlspecialchars($cli['telefono'] ?? ''); ?>)
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
     </div>
 
-    <div class="form-group">
-        <label class="form-label">Teléfono</label>
-        <input type="text"
-               name="telefono_cliente"
-               class="form-control">
-    </div>
+    <!-- CLIENTE MANUAL -->
+    <div id="seccion-cliente-manual" style="display: none;">
+        <div class="form-group">
+            <label class="form-label">Nombre Cliente</label>
+            <input type="text"
+                   name="nombre_cliente"
+                   class="form-control"
+                   placeholder="Nombre completo del cliente">
+        </div>
 
-    <div class="form-group">
-        <label class="form-label">Dirección</label>
-        <input type="text"
-               name="direccion_cliente"
-               class="form-control">
+        <div class="form-group">
+            <label class="form-label">Documento</label>
+            <input type="text"
+                   name="documento_cliente"
+                   class="form-control"
+                   placeholder="Cédula o documento">
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Teléfono</label>
+            <input type="text"
+                   name="telefono_cliente"
+                   class="form-control"
+                   placeholder="Teléfono de contacto">
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Dirección</label>
+            <input type="text"
+                   name="direccion_cliente"
+                   class="form-control"
+                   placeholder="Dirección de entrega">
+        </div>
     </div>
 
     <div class="form-group">
@@ -479,9 +553,6 @@ while($row = $resultado_prod->fetch_assoc()){
 
         </select>
     </div>
-
-    
-
     
 <hr style="margin:20px 0">
     <button
@@ -499,6 +570,20 @@ while($row = $resultado_prod->fetch_assoc()){
     </div>
 
     <script>
+
+function toggleClienteForm(){
+    let tipoCliente = document.querySelector('input[name="tipo_cliente"]:checked').value;
+    let seccionExistente = document.getElementById('seccion-cliente-existente');
+    let seccionManual = document.getElementById('seccion-cliente-manual');
+    
+    if(tipoCliente === 'existente'){
+        seccionExistente.style.display = 'block';
+        seccionManual.style.display = 'none';
+    } else {
+        seccionExistente.style.display = 'none';
+        seccionManual.style.display = 'block';
+    }
+}
 
 function abrirModal(){
     document.getElementById('modalVenta')

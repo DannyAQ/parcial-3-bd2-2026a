@@ -7,26 +7,76 @@ if(!isset($_GET['id'])){
 }
 
 $id_factura = (int)$_GET['id'];
-$sql = "SELECT f.*, v.metodo_pago FROM facturas_venta f LEFT JOIN ventas v ON f.id_venta = v.id_venta WHERE f.id_factura = ?";
+
+// Cargar factura y relacionar con venta y cliente
+$sql = "
+    SELECT f.*, v.metodo_pago, v.id_cliente, v.id_venta
+    FROM facturas_venta f 
+    LEFT JOIN ventas v ON f.id_venta = v.id_venta 
+    WHERE f.id_factura = ?
+";
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("i", $id_factura);
 $stmt->execute();
-$factura = $stmt->get_result()->fetch_assoc();
+$result = $stmt->get_result();
+$factura = $result->fetch_assoc();
+$stmt->close();
 
 if(!$factura){
     die('Error: Factura no encontrada');
 }
 
-$sql_items = "SELECT * FROM detalle_factura_venta WHERE id_factura = ?";
-$stmt = $conn->prepare($sql_items);
-$stmt->bind_param("i", $id_factura);
-$stmt->execute();
-$items = [];
-while($row = $stmt->get_result()->fetch_assoc()){
-    $items[] = $row;
+// Cargar datos completos del cliente desde tabla clientes
+$cliente_datos = [];
+if($factura['id_cliente']){
+    $sql_cli = "SELECT nombre, apellido, telefono, correo, direccion FROM clientes WHERE id_cliente = ?";
+    $stmt_cli = $conn->prepare($sql_cli);
+    $stmt_cli->bind_param("i", $factura['id_cliente']);
+    $stmt_cli->execute();
+    $result_cli = $stmt_cli->get_result();
+    $cliente_datos = $result_cli->fetch_assoc();
+    $stmt_cli->close();
 }
 
+// Cargar items de la venta desde detalle_ventas con JOINs
+$sql_items = "
+    SELECT 
+        dv.id_producto,
+        dv.id_lote,
+        dv.cantidad,
+        dv.precio_unitario,
+        dv.subtotal,
+        p.nombre as nombre_producto,
+        p.presentacion,
+        l.codigo_lote
+    FROM detalle_ventas dv
+    INNER JOIN productos p ON dv.id_producto = p.id_producto
+    INNER JOIN lotes l ON dv.id_lote = l.id_lote
+    WHERE dv.id_venta = ?
+";
+$stmt_items = $conn->prepare($sql_items);
+$stmt_items->bind_param("i", $factura['id_venta']);
+$stmt_items->execute();
+$result_items = $stmt_items->get_result();
+$items = [];
+while($row = $result_items->fetch_assoc()){
+    $items[] = $row;
+}
+$stmt_items->close();
+
 $hoy = date('d/m/Y H:i:s');
+
+// Preparar datos del cliente: usar datos de tabla clientes si existen, sino usar datos de factura
+$nombre_cliente_display = ($cliente_datos && !empty($cliente_datos['nombre'])) 
+    ? $cliente_datos['nombre'] . ' ' . ($cliente_datos['apellido'] ?? '')
+    : $factura['nombre_cliente'];
+$telefono_cliente_display = ($cliente_datos && !empty($cliente_datos['telefono'])) 
+    ? $cliente_datos['telefono'] 
+    : ($factura['telefono_cliente'] ?? '-');
+$direccion_cliente_display = ($cliente_datos && !empty($cliente_datos['direccion'])) 
+    ? $cliente_datos['direccion'] 
+    : ($factura['direccion_cliente'] ?? '-');
+
 $html = "
 <html>
 <head>
@@ -49,16 +99,15 @@ $html = "
     <div class='header'>
         <h1>FARMACIA EL DANNY</h1>
         <p>NIT: 123456789-1</p>
-        <p>FACTURA #" . str_pad($factura['id_factura'], 5, '0', STR_PAD_LEFT) . "</p>
+        <p>FACTURA #" . htmlspecialchars($factura['numero_factura']) . "</p>
     </div>
 
     <div class='factura-info'>
         <div>
             <strong>CLIENTE:</strong><br>
-            " . htmlspecialchars($factura['nombre_cliente']) . "<br>
-            <strong>DOCUMENTO:</strong> " . htmlspecialchars($factura['documento_cliente'] ?? '-') . "<br>
-            <strong>TELÉFONO:</strong> " . htmlspecialchars($factura['telefono_cliente'] ?? '-') . "<br>
-            <strong>DIRECCIÓN:</strong> " . htmlspecialchars($factura['direccion_cliente'] ?? '-') . "
+            " . htmlspecialchars($nombre_cliente_display) . "<br>
+            <strong>TELÉFONO:</strong> " . htmlspecialchars($telefono_cliente_display) . "<br>
+            <strong>DIRECCIÓN:</strong> " . htmlspecialchars($direccion_cliente_display) . "
         </div>
         <div>
             <strong>FECHA EMISIÓN:</strong> " . date('d/m/Y H:i', strtotime($factura['fecha_emision'])) . "<br>
@@ -71,7 +120,7 @@ $html = "
     <table>
         <thead>
             <tr>
-                <th>CÓDIGO</th>
+                <th>CÓDIGO LOTE</th>
                 <th>PRODUCTO</th>
                 <th style='text-align: right;'>CANT</th>
                 <th style='text-align: right;'>V/UNIT</th>
@@ -83,7 +132,7 @@ $html = "
 foreach($items as $item){
     $html .= "
             <tr>
-                <td>" . str_pad($item['id_lote'], 5, '0', STR_PAD_LEFT) . "</td>
+                <td>" . htmlspecialchars($item['codigo_lote'] ?? '-') . "</td>
                 <td>" . htmlspecialchars($item['nombre_producto']) . " - " . htmlspecialchars($item['presentacion'] ?? '') . "</td>
                 <td style='text-align: right;'>" . $item['cantidad'] . "</td>
                 <td style='text-align: right;'>\$" . number_format($item['precio_unitario'], 2, '.', ',') . "</td>
@@ -119,6 +168,8 @@ $html .= "
     <div class='footer'>
         <p>Factura generada automáticamente - Farmacia El Danny</p>
         <p>Gracias por su compra</p>
+        <p> Todos los derechos reservados &copy; " . date('Y') . " </p>
+        <p>Dannyak_ofc</p>
     </div>
 </body>
 </html>";
