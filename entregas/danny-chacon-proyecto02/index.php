@@ -86,7 +86,7 @@ if($resultado = $conn->query($sql_pop)){
         <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 25px; margin-top: 25px;">
             <div>
                 <h3 style="margin-bottom: 15px; color: white; display: flex; align-items: center; gap: 8px;">
-                    <i class="fa-solid fa-fire" style="color: #ff6b6b;"></i> Medicamentos mas vendidos
+                    <i class="fa-solid fa-fire" style="color: #6e4a4a;"></i> Medicamentos mas vendidos
                 </h3>
                 <div class="products-grid" style="grid-template-columns: repeat(3, 1fr);">
                     <?php if(count($populares) > 0): ?>
