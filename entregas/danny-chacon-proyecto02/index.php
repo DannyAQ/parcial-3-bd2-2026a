@@ -8,7 +8,7 @@ if(!isset($_SESSION['usuario'])){
 }
 
 $titulo_pagina = "Panel Principal";
-$subtitulo_pagina = "Dashboard de gestión farmacéutica";
+$subtitulo_pagina = "Interfaz de gestión farmacéutica";
 $fecha_hoy = date('Y-m-d');
 
 // VENTAS DEL DÍA
@@ -86,7 +86,7 @@ if($resultado = $conn->query($sql_pop)){
         <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 25px; margin-top: 25px;">
             <div>
                 <h3 style="margin-bottom: 15px; color: white; display: flex; align-items: center; gap: 8px;">
-                    <i class="fa-solid fa-fire" style="color: #ff6b6b;"></i> Medicamentos Populares
+                    <i class="fa-solid fa-fire" style="color: #ff6b6b;"></i> Medicamentos mas vendidos
                 </h3>
                 <div class="products-grid" style="grid-template-columns: repeat(3, 1fr);">
                     <?php if(count($populares) > 0): ?>

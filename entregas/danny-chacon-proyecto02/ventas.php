@@ -533,7 +533,7 @@ while($row = $resultado_prod->fetch_assoc()){
             <input type="text"
                    name="direccion_cliente"
                    class="form-control"
-                   placeholder="Dirección de entrega">
+                   placeholder="Dirección de residencia">
         </div>
     </div>
 

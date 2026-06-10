@@ -385,7 +385,7 @@ if ($resultado = $conn->query($sql_comp)) {
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label">Cantidad Inicial *</label>
+                    <label class="form-label">Cantidad und *</label>
                     <input type="number" name="cantidad_inicial" class="form-control" min="1" required>
                 </div>
 
