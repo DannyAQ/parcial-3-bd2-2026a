@@ -96,11 +96,7 @@ if($resultado){
                 <div class="card-small">Inversión mensual</div>
             </div>
 
-            <div class="card">
-                <div class="card-title">Productos Vencidos</div>
-                <div class="card-value" style="color: #ff6b6b;"><?php echo $productos_vencidos; ?></div>
-                <div class="card-small">Requieren eliminación</div>
-            </div>
+           
 
             <div class="card">
                 <div class="card-title">Stock Bajo</div>
